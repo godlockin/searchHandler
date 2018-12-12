@@ -36,7 +36,7 @@ spring:
 
 logging:
   config: classpath:logback-spring.xml
-  path: ${HOME}/logs/${spring.application.name}
+  path: ./logs/${spring.application.name}
   pattern:
     dateformat: yyyyMMdd HH:mm:ss:SSS
     level: info

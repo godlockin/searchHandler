@@ -2,7 +2,7 @@
 
 <configuration DEBUG="true">
     <!-- 应用名称 -->
-    <property name="APP_NAME" value="user-center" />
+    <property name="APP_NAME" value="search-handler" />
     <!--日志文件的保存路径,首先查找系统属性-D log.dir,如果存在就使用；否则，在当前目录下创建名为logs目录做日志存放的目录 -->
     <!--<property name="LOG_HOME" value="${LOG_PATH}/${log.dir:-logs}/${APP_NAME}" />-->
     <springProperty scope="context" name="LOG_HOME" source="logging.path"/>
