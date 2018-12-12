@@ -1,0 +1,47 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: search-handler
+  profiles:
+    active: dev
+  datasource:
+    type: com.alibaba.druid.pool.DruidDataSource
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    druid:
+      min-idle: 1
+      max-open-prepared-statements: 20
+      web-stat-filter:
+        url-pattern: /*
+        exclusions: /monitor/*,/druid/*,*.js,*.gif,*.jpg,*.png,*.css,*.ico
+        profile-enable: true
+        enabled: true
+      test-while-idle: true
+      time-between-eviction-runs-millis: 60000
+      max-active: 200
+      validation-query: SELECT 1 FROM DUAL
+      filters: stat,wall,slf4j
+      max-wait: 60000
+      connection-properties: druid.stat.mergeSql=true;druid.stat.slowSqlMillis=3000
+      test-on-borrow: false
+      stat-view-servlet:
+        url-pattern: /monitor/druid/*
+        reset-enable: true
+      pool-prepared-statements: true
+      initial-size: 1
+      min-evictable-idle-time-millis: 300000
+      test-on-return: false
+    maximum-pool-size: 100
+
+logging:
+  config: classpath:logback-spring.xml
+  path: ${HOME}/logs/${spring.application.name}
+  pattern:
+    dateformat: yyyyMMdd HH:mm:ss:SSS
+    level: info
+
+mybatis:
+  config-location: classpath:mybatis-config.xml
+  mapper-locations: mapper/*.xml
+  type-aliases-package: com.tigerobo.searchhandler.entity

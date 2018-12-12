@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.tigerobo.searchhandler.mapper.BusinessMapper">
+    <resultMap id="ResultMap" type="com.tigerobo.searchhandler.entity.BusinessInformation">
+        <!-- essential -->
+        <id column="e_serialno" property="serialno" />
+        <result column="e_correlation_no" property="correlationNo" />
+        <result column="e_registration_no" property="registrationNo" />
+        <result column="e_credit_code" property="creditCode" />
+        <result column="e_enterprises_type" property="enterprisesType" />
+        <result column="e_registered_capital" property="registeredCapital" />
+        <result column="e_registered_capital_origin" property="registeredCapitalOrigin" />
+        <result column="e_business_time_start" property="businessTimeStart" />
+        <result column="e_registration_authority" property="registrationAuthority" />
+        <result column="e_registration_status" property="registrationStatus" />
+        <result column="e_residence" property="residence" />
+        <result column="e_enterprise_name" property="enterpriseName" />
+        <result column="e_charge_person" property="chargePerson" />
+        <result column="e_establishment_date" property="establishmentDate" />
+        <result column="e_business_time_end" property="businessTimeEnd" />
+        <result column="e_approval_date" property="approvalDate" />
+        <result column="e_create_time" property="createTime" />
+        <result column="e_spider_time" property="spiderTime" />
+        <result column="e_business_scope" property="businessScope" />
+
+        <!-- key person -->
+        <result column="k_serialno" property="kSerialno" />
+        <result column="k_name" property="name" />
+        <result column="k_position_chinese" property="positionChinese" />
+        <result column="k_create_time" property="kCreateTime" />
+
+        <!-- share holder -->
+        <result column="s_serialno" property="sSerialno" />
+        <result column="s_shareholder_name" property="shareholderName" />
+        <result column="s_shareholder_type" property="shareholderType" />
+        <result column="s_payable_amount" property="payableAmount" />
+        <result column="s_payable_actual_amount" property="payableActualAmount" />
+        <result column="s_shareholder_credit_type" property="shareholderCreditType" />
+        <result column="s_shareholder_credit_no" property="shareholderCreditNo" />
+        <result column="s_create_time" property="sCreateTime" />
+    </resultMap>
+
+    <sql id="allFieldsQuery">
+              e.serialno as e_serialno
+            , e.correlation_no as  e_correlation_no
+            , e.registration_no as  e_registration_no
+            , e.credit_code as  e_credit_code
+            , e.enterprises_type as  e_enterprises_type
+            , e.registered_capital as  e_registered_capital
+            , e.registered_capital_origin as  e_registered_capital_origin
+            , e.business_time_start as e_business_time_start
+            , e.registration_authority as  e_registration_authority
+            , e.registration_status as  e_registration_status
+            , e.residence as  e_residence
+            , e.enterprise_name as  e_enterprise_name
+            , e.charge_person as  e_charge_person
+            , e.establishment_date as  e_establishment_date
+            , e.business_time_end as  e_business_time_end
+            , e.approval_date as  e_approval_date
+            , e.create_time as  e_create_time
+            , e.spider_time as  e_spider_time
+
+            , k.serialno as k_serialno
+            , k.name as k_name
+            , k.position_chinese as k_position_chinese
+            , k.create_time as k_create_time
+
+            , s.serialno as s_serialno
+            , s.shareholder_name as s_shareholder_name
+            , s.shareholder_type as s_shareholder_type
+            , s.payable_amount as s_payable_amount
+            , s.payable_actual_amount as s_payable_actual_amount
+            , s.shareholder_credit_type as s_shareholder_credit_type
+            , s.shareholder_credit_no as s_shareholder_credit_no
+            , s.create_time as s_create_time
+    </sql>
+
+    <sql id="baseConditions">
+        from
+        <if test="provinceCode == null">
+            essential_information e
+            , key_personnel k
+            , shareholder_information s
+        </if>
+        <if test="provinceCode != null">
+            essential_information_${provinceCode} e
+            , key_personnel_${provinceCode} k
+            , shareholder_information_${provinceCode} s
+        </if>
+        where
+          e.correlation_no = k.correlation_no
+        and
+          e.correlation_no = s.correlation_no
+    </sql>
+
+    <select id="selectAllData" parameterType="java.util.Map" resultMap="ResultMap">
+        select
+        <include refid="allFieldsQuery"/>
+        <include refid="baseConditions"/>
+        order by e.correlation_no
+        <if test="size != null and index != null">
+        limit ${index}, ${size}
+        </if>
+    </select>
+
+    <select id="countAllData" parameterType="java.lang.String" resultType="java.lang.Long">
+        select
+            count(1)
+        <include refid="baseConditions"/>
+    </select>
+</mapper>
