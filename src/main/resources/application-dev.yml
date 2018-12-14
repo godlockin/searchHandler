@@ -1,5 +1,5 @@
 elasticsearch:
-  address: 10.0.3.61
+  address: localhost
   port:
     http: 9200
     ws: 9300
@@ -7,20 +7,20 @@ elasticsearch:
     size: 5000
     flush: 5000
     concurrent: 3
-  index: business_data_current_writer
-  type: business_data
+  index:
+  type:
 
 spring:
   datasource:
-    url: jdbc:mysql://rm-uf68c5j1b35x27049.mysql.rds.aliyuncs.com/gongshang-business?useUnicode=true&characterEncoding=utf-8&zeroDateTimeBehavior=CONVERT_TO_NULL
-    username: readonly
-    password: HP140swyBmDicA8O
+    url: jdbc:mysql://localhost:3006/business?useUnicode=true&characterEncoding=utf-8&zeroDateTimeBehavior=CONVERT_TO_NULL
+    username:
+    password:
   rabbitmq:
-    host: 10.0.3.14
+    host: localhost
     port: 5672
     username: guest
     password: guest
-    queue-name: business-data
+    queue-name: 
 
 paging:
   pageSize: 5000
