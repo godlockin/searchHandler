@@ -12,5 +12,7 @@ public interface BusinessMapper {
 
     List<BusinessInformation> selectAllData(Map param);
 
-    Long countAllData(@Param(value="provinceCode") String provinceCode);
+    Long countAllData(@Param(value = "provinceCode") String provinceCode);
+
+    List<Long> findTargetPk(Map param);
 }

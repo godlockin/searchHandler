@@ -24,14 +24,14 @@ spring:
       filters: stat,wall,slf4j
       max-wait: 60000
       connection-properties: druid.stat.mergeSql=true;druid.stat.slowSqlMillis=3000
-      test-on-borrow: false
+      test-on-borrow: true
       stat-view-servlet:
         url-pattern: /monitor/druid/*
         reset-enable: true
       pool-prepared-statements: true
       initial-size: 1
       min-evictable-idle-time-millis: 300000
-      test-on-return: false
+      test-on-return: true
     maximum-pool-size: 100
 
 logging:
@@ -45,3 +45,9 @@ mybatis:
   config-location: classpath:mybatis-config.xml
   mapper-locations: mapper/*.xml
   type-aliases-package: com.tigerobo.searchhandler.entity
+
+elasticsearch:
+  connect-timeout: 5000
+  socket-timeout: 40000
+  connection-request-timeout: 1000
+  max-retry-tineout-millis: 60000

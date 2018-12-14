@@ -9,4 +9,5 @@ public interface BusinessDao {
 
     List<BusinessInformation> searchForProvince(Map param);
     Long countForProvince(String provinceCode);
+    List<Long> findTargetPk(Map param);
 }

@@ -22,9 +22,12 @@ public class BusinessDaoImpl extends BaseDaoImpl implements BusinessDao {
     public List<BusinessInformation> searchForProvince(Map param) {
 
         printSql(BusinessMapper.mapperPath + ".selectAllData", param);
-        log.info("Try to load business info for param:[{}]", param);
+        String provinceCode = DataUtils.getNotNullValue(param, "provinceCode", String.class, "");
+        Long index = DataUtils.getNotNullValue(param, "index", Long.class, 0L);
+        Integer size = DataUtils.getNotNullValue(param, "size", Integer.class, 0);
+        log.info("Try to load business info for provinceCode:[{}], limit:[{}] size:[{}]", provinceCode, index, size);
         List<BusinessInformation> dataList = businessMapper.selectAllData(param);
-        log.info("Got {} business info for param:[{}]", dataList.size(), param);
+        log.info("Got {} business info for provinceCode:[{}], limit:[{}] size:[{}]", dataList.size(), provinceCode, index, size);
         return notNullList(dataList);
     }
 
@@ -36,5 +39,15 @@ public class BusinessDaoImpl extends BaseDaoImpl implements BusinessDao {
         Long dataNum = businessMapper.countAllData(provinceCode);
         log.info("Got {} business info for province:[{}]", dataNum, provinceCode);
         return DataUtils.handleNullValue(dataNum, Long.class, 0L);
+    }
+
+    @Override
+    public List<Long> findTargetPk(Map param) {
+
+        printSql(BusinessMapper.mapperPath + ".findTargetPk", param);
+        log.info("Try to find target serial no for:[{}]", param);
+        List<Long> idList = businessMapper.findTargetPk(param);
+        log.info("Got {} ids for param:[{}]", idList.size(), param);
+        return notNullList(idList);
     }
 }

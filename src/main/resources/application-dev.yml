@@ -1,18 +1,29 @@
 elasticsearch:
-  address: localhost
+  address: 10.0.3.61
   port:
     http: 9200
     ws: 9300
   bulk:
-    size: 50000
-  index:
-  type:
+    size: 5000
+    flush: 5000
+    concurrent: 3
+  index: business_data_current_writer
+  type: business_data
 
 spring:
   datasource:
-    url:
-    username:
-    password:
+    url: jdbc:mysql://rm-uf68c5j1b35x27049.mysql.rds.aliyuncs.com/gongshang-business?useUnicode=true&characterEncoding=utf-8&zeroDateTimeBehavior=CONVERT_TO_NULL
+    username: readonly
+    password: HP140swyBmDicA8O
+  rabbitmq:
+    host: 10.0.3.14
+    port: 5672
+    username: guest
+    password: guest
+    queue-name: business-data
 
 paging:
   pageSize: 5000
+
+threadpool:
+  keep-alive-num: 1024

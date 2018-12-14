@@ -13,6 +13,5 @@ public interface ESService {
     RestClient getESClient() throws SearchHandlerException;
     RestHighLevelClient getESHighLevelClient() throws SearchHandlerException;
     Integer bulkInsert(String index, String type, String idKey, List data) throws SearchHandlerException;
-    Integer bulkInsert(String index, String type, List data) throws SearchHandlerException;
     Map simpleSearch(Map param) throws SearchHandlerException;
 }

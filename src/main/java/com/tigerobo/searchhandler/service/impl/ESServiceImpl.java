@@ -1,16 +1,19 @@
 package com.tigerobo.searchhandler.service.impl;
 
-import com.alibaba.fastjson.JSON;
 import com.tigerobo.searchhandler.common.constants.BusinessConstants;
 import com.tigerobo.searchhandler.common.constants.ResultEnum;
 import com.tigerobo.searchhandler.common.utils.DataUtils;
 import com.tigerobo.searchhandler.exception.SearchHandlerException;
 import com.tigerobo.searchhandler.service.ESService;
-import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpHost;
+import org.apache.http.client.config.RequestConfig;
+import org.elasticsearch.action.DocWriteRequest;
+import org.elasticsearch.action.bulk.BackoffPolicy;
+import org.elasticsearch.action.bulk.BulkProcessor;
 import org.elasticsearch.action.bulk.BulkRequest;
+import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchResponse;
@@ -18,10 +21,11 @@ import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestClient;
 import org.elasticsearch.client.RestClientBuilder;
 import org.elasticsearch.client.RestHighLevelClient;
-import org.elasticsearch.common.text.Text;
+import org.elasticsearch.common.unit.ByteSizeUnit;
+import org.elasticsearch.common.unit.ByteSizeValue;
+import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.index.query.MultiMatchQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
-import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.SearchHits;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.search.fetch.subphase.highlight.HighlightBuilder;
@@ -32,7 +36,8 @@ import org.springframework.util.CollectionUtils;
 
 import javax.annotation.PostConstruct;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -45,7 +50,19 @@ public class ESServiceImpl implements ESService {
     @Value("${elasticsearch.port.http}")
     private Integer ES_HTTP_PORT;
     @Value("${elasticsearch.bulk.size}")
-    private Long ES_BULK_SIZE;
+    private int ES_BULK_SIZE;
+    @Value("${elasticsearch.bulk.flush}")
+    private int ES_BULK_FLUSH;
+    @Value("${elasticsearch.bulk.concurrent}")
+    private int ES_BULK_CONCURRENT;
+    @Value("${elasticsearch.connect-timeout}")
+    private int ES_CONNECT_TIMEOUT;
+    @Value("${elasticsearch.socket-timeout}")
+    private int ES_SOCKET_TIMEOUT;
+    @Value("${elasticsearch.connection-request-timeout}")
+    private int ES_CONNECTION_REQUEST_TIMEOUT;
+    @Value("${elasticsearch.max-retry-tineout-millis}")
+    private int ES_MAX_RETRY_TINEOUT_MILLIS;
 
     @Value("${elasticsearch.index}")
     private String esIndex;
@@ -55,8 +72,9 @@ public class ESServiceImpl implements ESService {
     private RequestOptions COMMON_OPTIONS = RequestOptions.DEFAULT.toBuilder().build();
     private static RestClient restClient;
     private static RestHighLevelClient restHighLevelClient;
+    private static BulkProcessor bulkProcessor;
     private List<String> esHttpAddress = new ArrayList<>();
-    private AtomicLong bulkCount = new AtomicLong(0L);
+    private AtomicInteger bulkCount = new AtomicInteger(0);
 
     @Override
     public Map simpleSearch(Map param) throws SearchHandlerException {
@@ -106,7 +124,7 @@ public class ESServiceImpl implements ESService {
         }
     }
 
-    private Map buildResult(SearchResponse response) {
+    private Map<String, Object> buildResult(SearchResponse response) {
         SearchHits hits = response.getHits();
         Map result = new HashMap(){{
            put("total", hits.totalHits);
@@ -136,36 +154,20 @@ public class ESServiceImpl implements ESService {
         }
 
         log.info("Try to bulk insert into index:[{}] type:[{}]", index, type);
-        BulkRequest bulkRequest = new BulkRequest();
         dataList.stream().forEach(x -> {
-            Map data = (Map) x;
-            IndexRequest indexRequest = new IndexRequest(index, type);
-            if (StringUtils.isNotBlank(idKey)) {
-                String pk = DataUtils.getNotNullValue(data, idKey, String.class, "");
-                if (StringUtils.isNotBlank(pk)) {
-                    indexRequest = new IndexRequest(index, type, pk);
-                }
-            }
-            indexRequest.source(data);
-            bulkRequest.add(indexRequest);
-        });
+                    Map data = (Map) x;
+                    String pk = DataUtils.getNotNullValue(data, idKey, String.class, "");
+                    bulkCommit(new IndexRequest(index, type, pk).source(data));
+                });
 
-        Integer dataSize = dataList.size();
-        bulkCommit(dataSize, bulkRequest);
-        log.info("Bulk inserted {} data", dataSize);
-        return dataSize;
-
+        int size = dataList.size();
+        log.info("Bulk inserted {} data", size);
+        return size;
     }
 
-    @Override
-    public Integer bulkInsert(String index, String type, List data) throws SearchHandlerException {
+    private void bulkCommit(DocWriteRequest request) {
 
-        return bulkInsert(index, type, "", data);
-    }
-
-    private Integer bulkCommit(Integer bulkSize, BulkRequest bulkRequest) throws SearchHandlerException {
-
-        if (bulkCount.get() >= ES_BULK_SIZE) {
+        /*if (bulkCount.incrementAndGet() >= ES_BULK_SIZE) {
             synchronized (ESServiceImpl.class) {
                 if (bulkCount.get() >= ES_BULK_SIZE) {
                     log.info("Reach the bulk gap:[{}] refresh the client", ES_BULK_SIZE);
@@ -173,22 +175,13 @@ public class ESServiceImpl implements ESService {
                     // and reset counter
                     closeESClient();
                     initESClient();
-                    bulkCount.set(0L);
+                    bulkCount.set(0);
                     log.info("Client refresh done");
                 }
             }
-        }
+        }*/
 
-        try {
-            bulkCount.addAndGet(bulkSize);
-            restHighLevelClient.bulk(bulkRequest, COMMON_OPTIONS);
-            return bulkSize;
-        } catch (Exception e) {
-            e.printStackTrace();
-            String errMsg = "Error happened when we do bulk insert" + e;
-            log.error(errMsg);
-            throw new SearchHandlerException(ResultEnum.ES_CLIENT_BULK_COMMIT);
-        }
+        bulkProcessor.add(request);
     }
 
     @Override
@@ -224,10 +217,10 @@ public class ESServiceImpl implements ESService {
     }
 
     @PostConstruct
-    void initESClient() throws SearchHandlerException {
+    private void initESClient() throws SearchHandlerException {
+        initStaticVariables();
         Integer esHttpPort = (null == ES_HTTP_PORT || 0 == ES_HTTP_PORT) ? BusinessConstants.ESConfig.DEFAULT_ES_HTTP_PORT : ES_HTTP_PORT;
         String esAddrs = (StringUtils.isNotBlank(ES_ADDRESSES)) ? ES_ADDRESSES : BusinessConstants.ESConfig.DEFAULT_ES_ADDRESSES;
-        ES_BULK_SIZE = (null == ES_BULK_SIZE || 0L == ES_BULK_SIZE) ? BusinessConstants.ESConfig.DEFAULT_ES_BULK_SIZE : ES_BULK_SIZE;
 
         try {
             String[] addrArry = esAddrs.split(",");
@@ -238,9 +231,26 @@ public class ESServiceImpl implements ESService {
                 esHttpAddress.add(addr + esHttpPort);
                 httpHosts[i] = new HttpHost(addr, esHttpPort, "http");
             }
-            RestClientBuilder builder = RestClient.builder(httpHosts);
+
+            RestClientBuilder builder = RestClient.builder(httpHosts)
+                    .setRequestConfigCallback((RequestConfig.Builder requestConfigBuilder) ->
+                            requestConfigBuilder.setConnectTimeout(ES_CONNECT_TIMEOUT)
+                                    .setSocketTimeout(ES_SOCKET_TIMEOUT)
+                                    .setConnectionRequestTimeout(ES_CONNECTION_REQUEST_TIMEOUT))
+                                    .setMaxRetryTimeoutMillis(ES_MAX_RETRY_TINEOUT_MILLIS);
+
             restClient = builder.build();
             restHighLevelClient = new RestHighLevelClient(builder);
+
+            bulkProcessor = BulkProcessor.builder((request, bulkListener) ->
+                    restHighLevelClient.bulkAsync(request, COMMON_OPTIONS, bulkListener),
+                    getBPListener())
+                    .setBulkActions(ES_BULK_FLUSH)
+                    .setBulkSize(new ByteSizeValue(ES_BULK_SIZE, ByteSizeUnit.MB))
+                    .setFlushInterval(TimeValue.timeValueSeconds(10L))
+                    .setConcurrentRequests(ES_BULK_CONCURRENT)
+                    .setBackoffPolicy(BackoffPolicy.constantBackoff(TimeValue.timeValueSeconds(1L), 3))
+                    .build();
         } catch (Exception e) {
             e.printStackTrace();
             String errMsg = "Error happened when we init ES transport client" + e;
@@ -249,10 +259,60 @@ public class ESServiceImpl implements ESService {
         }
     }
 
-    void closeESClient() throws SearchHandlerException {
+    private BulkProcessor.Listener getBPListener() {
+        return new BulkProcessor.Listener() {
+            @Override
+            public void beforeBulk(long executionId, BulkRequest request) {
+                log.info("Start to handle bulk commit executionId:[{}] for {} requests", executionId, request.numberOfActions());
+            }
+
+            @Override
+            public void afterBulk(long executionId, BulkRequest request, BulkResponse response) {
+                log.info("Finished handling bulk commit executionId:[{}]", executionId);
+
+                if (response.hasFailures()) {
+                    List<String> errMsg = new ArrayList<>();
+                    response.spliterator().forEachRemaining(x -> {
+                        if (x.isFailed()) {
+                            errMsg.add(String.format("\tid:[%s], item:[%s]: %s", x.getId(), x.getItemId(), x.getFailureMessage()));
+                        }
+                    });
+                    log.error("Bulk executionId:[{}] has error messages:\n", executionId, String.join("\n", errMsg));
+                }
+            }
+
+            @Override
+            public void afterBulk(long executionId, BulkRequest request, Throwable failure) {
+                failure.printStackTrace();
+                log.error("Bulk finished with error:[{}]", failure.getMessage());
+                request.requests().stream().filter(x -> x instanceof IndexRequest)
+                        .forEach(x -> {
+                            Map source = ((IndexRequest) x).sourceAsMap();
+                            String pk = DataUtils.getNotNullValue(source, "id", String.class, "");
+                            log.error("Failure to handle index:[{}], type:[{}] id:[{}]", x.index(), x.type(), pk);
+                        });
+            }
+        };
+    }
+
+    private void initStaticVariables() {
+
+        ES_BULK_SIZE = DataUtils.handleNullValue(ES_BULK_SIZE, Integer.class, BusinessConstants.ESConfig.DEFAULT_ES_BULK_SIZE);
+        ES_BULK_FLUSH = DataUtils.handleNullValue(ES_BULK_FLUSH, Integer.class, BusinessConstants.ESConfig.DEFAULT_ES_BULK_FLUSH);
+        ES_BULK_CONCURRENT = DataUtils.handleNullValue(ES_BULK_CONCURRENT, Integer.class, BusinessConstants.ESConfig.DEFAULT_ES_BULK_CONCURRENT);
+        ES_CONNECT_TIMEOUT = DataUtils.handleNullValue(ES_CONNECT_TIMEOUT, Integer.class, BusinessConstants.ESConfig.DEFAULT_ES_CONNECT_TIMEOUT);
+        ES_SOCKET_TIMEOUT = DataUtils.handleNullValue(ES_SOCKET_TIMEOUT, Integer.class, BusinessConstants.ESConfig.DEFAULT_ES_SOCKET_TIMEOUT);
+        ES_CONNECTION_REQUEST_TIMEOUT = DataUtils.handleNullValue(ES_CONNECTION_REQUEST_TIMEOUT, Integer.class, BusinessConstants.ESConfig.DEFAULT_ES_CONNECTION_REQUEST_TIMEOUT);
+        ES_MAX_RETRY_TINEOUT_MILLIS = DataUtils.handleNullValue(ES_MAX_RETRY_TINEOUT_MILLIS, Integer.class, BusinessConstants.ESConfig.DEFAULT_ES_MAX_RETRY_TINEOUT_MILLIS);
+    }
+
+    private void closeESClient() throws SearchHandlerException {
         try {
-            restClient.close();
-            restHighLevelClient.close();
+            boolean terminated = bulkProcessor.awaitClose(30L, TimeUnit.SECONDS);
+            if (terminated) {
+                restClient.close();
+                restHighLevelClient.close();
+            }
         } catch (Exception e) {
             e.printStackTrace();
             String errMsg = "Error happened when we try to close ES client" + e;

@@ -6,6 +6,23 @@ import java.util.Map;
 @SuppressWarnings({"unchecked"})
 public class BusinessConstants {
 
+
+    public static class QueryConfig {
+        public QueryConfig() { }
+
+        public static final int DEFAULT_THREAD_NUM = 1024;
+        public static final int DEFAULT_PAGE_SIZE = 5000;
+        public static final long DEFAULT_QUERY_INDEX = 0L;
+        public static final String KEY_PROVINCE_CODE = "provinceCode";
+        public static final String KEY_PROVINCE_NAME = "provinceName";
+        public static final String KEY_PAGE_SIZE = "pageSize";
+        public static final String KEY_ESINDEX = "esIndex";
+        public static final String KEY_ESTYPE = "esType";
+        public static final String KEY_QUERY_INDEX = "index";
+        public static final String KEY_QUERY_SIZE = "size";
+        public static final String KEY_QUERY_IDLIST = "idList";
+    }
+
     public static final Map<String, String> PROVINCE_MAP = new HashMap() {{
         put("11", "北京");
         put("12", "天津");
@@ -45,9 +62,16 @@ public class BusinessConstants {
 
         public static final String DEFAULT_ES_ADDRESSES = "localhost";
         public static final int DEFAULT_ES_HTTP_PORT = 9200;
-        public static final int DEFAULT_ES_BULK_SIZE = 50000;
+        public static final int DEFAULT_ES_BULK_SIZE = 10;
+        public static final int DEFAULT_ES_BULK_FLUSH = 5000;
+        public static final int DEFAULT_ES_BULK_CONCURRENT = 3;
         public static final int DEFAULT_ES_FROM = 0;
         public static final int DEFAULT_ES_SIZE = 10;
         public static final int DEFAULT_ES_MAX_SIZE = 10000;
+        public static final int DEFAULT_ES_CONNECT_TIMEOUT = 5000;
+        public static final int DEFAULT_ES_SOCKET_TIMEOUT = 40000;
+        public static final int DEFAULT_ES_CONNECTION_REQUEST_TIMEOUT = 1000;
+        public static final int DEFAULT_ES_MAX_RETRY_TINEOUT_MILLIS = 60000;
+
     }
 }

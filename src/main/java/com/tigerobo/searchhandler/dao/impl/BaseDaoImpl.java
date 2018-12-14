@@ -21,6 +21,6 @@ public class BaseDaoImpl {
 
     protected void printSql(String method, Object param) {
         String sql = sqlSessionFactory.getConfiguration().getMappedStatement(method).getBoundSql(param).getSql();
-        log.info("Execute sql:\n{}", sql);
+        log.debug("Execute sql:\n{}", sql);
     }
 }

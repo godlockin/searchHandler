@@ -1,8 +1,10 @@
 package com.tigerobo.searchhandler.common.component;
 
-import com.tigerobo.searchhandler.common.utils.DataUtils;
+import com.tigerobo.searchhandler.common.constants.BusinessConstants;
+import com.tigerobo.searchhandler.common.constants.ResultEnum;
 import com.tigerobo.searchhandler.dao.BusinessDao;
 import com.tigerobo.searchhandler.entity.BusinessInformation;
+import com.tigerobo.searchhandler.exception.SearchHandlerException;
 import com.tigerobo.searchhandler.model.BusinessModel;
 import com.tigerobo.searchhandler.model.KeyPesonModel;
 import com.tigerobo.searchhandler.model.ShareHolderModel;
@@ -11,17 +13,19 @@ import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
 
 @Data
 @Slf4j
 @Component
-public class DataTransportThread extends Thread {
+public class DataTransportCallable implements Callable<Long> {
 
     private String esType;
     private String esIndex;
@@ -30,50 +34,56 @@ public class DataTransportThread extends Thread {
     private BusinessDao businessDao;
 
     private Long index = 0L;
-    private Integer size = 0;
     private String provinceCode;
     private String provinceName;
 
     @Override
-    public void run() {
+    public Long call() throws Exception {
 
         log.info("Try to load data for [{}]-[{}] and insert [{}]-[{}]", provinceCode, provinceName, esIndex, esType);
         try {
+            long count = 0L;
             if (StringUtils.isBlank(provinceCode) || StringUtils.isBlank(esIndex) || StringUtils.isBlank(esType)) {
                 log.error("Important info missing");
-                return;
+                return count;
             }
 
-            long count = 0L;
-            List bulkList = new ArrayList();
+            List<Map<String, Object>> bulkList = new ArrayList<>();
             // load target data
-            Map param = new HashMap();
-            param.put("provinceCode", provinceCode);
-            if (size != 0) {
-                param.put("index", index);
-                param.put("size", size);
+            Map<String, Object> param = new HashMap<>();
+            param.put(BusinessConstants.QueryConfig.KEY_PROVINCE_CODE, provinceCode);
+            param.put(BusinessConstants.QueryConfig.KEY_QUERY_INDEX, index);
+            param.put(BusinessConstants.QueryConfig.KEY_QUERY_SIZE, pageSize);
+            List<Long> idList = businessDao.findTargetPk(param);
+            if (CollectionUtils.isEmpty(idList)) {
+                log.error("No target id found");
+                return count;
             }
 
+            param.put(BusinessConstants.QueryConfig.KEY_QUERY_IDLIST, idList);
             List<BusinessInformation> dataList = businessDao.searchForProvince(param);
             int dataSize = dataList.size();
             log.info("Get {} data to be handled", dataSize);
-            Long baseCorrelationNo = 0L;
+            long baseCorrelationNo = 0L;
             int baseKSerialNo = 0;
             int baseSSerialNo = 0;
+            boolean isSaved = true;
             BusinessModel model = new BusinessModel(provinceCode, provinceName);
             for (int i = 0; i < dataSize; i++) {
+                isSaved = false;
                 BusinessInformation bi = dataList.get(i);
                 long correlationNo = bi.getCorrelationNo();
                 // if switch base data, save &/| commit
                 if (correlationNo != baseCorrelationNo) {
                     if (0 != baseCorrelationNo) {
                         bulkList.add(convertModelToMap(model));
-                        log.info("Save data provinceCode:[{}]-[{}] serialno:[{}], correlationNo:[{}]", provinceCode, provinceName, model.getSerialno(), model.getCorrelation_no());
+                        log.debug("Save data provinceCode:[{}]-[{}] serialno:[{}], correlationNo:[{}]", provinceCode, provinceName, model.getSerialno(), model.getCorrelation_no());
 
                         // commit & refresh tmp list
                         if (bulkList.size() > pageSize) {
                             count += esService.bulkInsert(esIndex, esType, "id", bulkList);
-                            bulkList = new ArrayList();
+                            bulkList = new ArrayList<>();
+                            isSaved = true;
                         }
                     }
                     model = new BusinessModel(provinceCode, provinceName);
@@ -82,28 +92,36 @@ public class DataTransportThread extends Thread {
                 }
 
                 // append new key person
-                if (bi.getKSerialno() != baseKSerialNo) {
+                if (null != bi.getKSerialno() && baseKSerialNo != bi.getKSerialno()) {
                     model.getKey_personnel().add(new KeyPesonModel(bi));
                     baseKSerialNo = bi.getKSerialno();
                 }
 
                 // append new share holder
-                if (bi.getSSerialno() != baseSSerialNo) {
+                if (null != bi.getSSerialno() && baseSSerialNo != bi.getSSerialno()) {
                     model.getShareholder_information().add(new ShareHolderModel(bi));
                     baseSSerialNo = bi.getSSerialno();
                 }
             }
 
+            // to save the last company if isn't been committed
+            if (!isSaved) {
+                bulkList.add(convertModelToMap(model));
+            }
+
             count += esService.bulkInsert(esIndex, esType, "id", bulkList);
             log.info("Finished handled {} data", count);
+            return count;
         } catch (Exception e) {
             e.printStackTrace();
-            log.error("Error happened when we load data for [{}]-[{}] and insert [{}]-[{}], {}",
+            String errMsg = String.format("Error happened when we load data for [%s]-[%s] and insert [%s]-[%s], %s",
                     provinceCode, provinceName, esIndex, esType, e);
+            log.error(errMsg);
+            throw new SearchHandlerException(ResultEnum.ES_CLIENT_BULK_COMMIT, errMsg);
         }
     }
 
-    private Map convertModelToMap(BusinessModel model) {
+    private Map<String, Object> convertModelToMap(BusinessModel model) {
         // essential info
         Map data = new HashMap(){{
             put("id", String.valueOf(model.getCorrelation_no()));
@@ -130,7 +148,7 @@ public class DataTransportThread extends Thread {
         }};
 
         // key personal info
-        data.put("key_personnel", model.getKey_personnel().stream().map(x -> new HashMap() {
+        data.put("key_personnel", model.getKey_personnel().stream().filter(x -> null != x).map(x -> new HashMap() {
             {
                 put("serialno", x.getSerialno());
                 put("name", x.getName());
@@ -140,7 +158,7 @@ public class DataTransportThread extends Thread {
         }).collect(Collectors.toList()));
 
         // share holder info
-        data.put("shareholder_information", model.getShareholder_information().stream().map(x -> new HashMap() {
+        data.put("shareholder_information", model.getShareholder_information().stream().filter(x -> null != x).map(x -> new HashMap() {
             {
                 put("serialno", x.getSerialno());
                 put("shareholder_name", x.getShareholder_name());

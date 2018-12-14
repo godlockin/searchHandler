@@ -79,33 +79,59 @@
         from
         <if test="provinceCode == null">
             essential_information e
-            , key_personnel k
-            , shareholder_information s
+            left join key_personnel k
+            on  e.correlation_no = k.correlation_no
+            left join shareholder_information s
+            on e.correlation_no = s.correlation_no
         </if>
         <if test="provinceCode != null">
             essential_information_${provinceCode} e
-            , key_personnel_${provinceCode} k
-            , shareholder_information_${provinceCode} s
+            left join key_personnel_${provinceCode} k
+            on  e.correlation_no = k.correlation_no
+            left join shareholder_information_${provinceCode} s
+            on e.correlation_no = s.correlation_no
         </if>
-        where
-          e.correlation_no = k.correlation_no
-        and
-          e.correlation_no = s.correlation_no
     </sql>
 
     <select id="selectAllData" parameterType="java.util.Map" resultMap="ResultMap">
         select
         <include refid="allFieldsQuery"/>
         <include refid="baseConditions"/>
-        order by e.correlation_no
+
+        <if test="idList != null">
+            where
+              e.serialno in
+            <foreach collection="idList" index="index" item="item" open="(" separator="," close=")">
+                          #{item}
+            </foreach>
+        </if>
+    </select>
+
+    <select id="findTargetPk" parameterType="java.util.Map" resultType="java.lang.Long">
+        select
+          serialno
+        from
+        <if test="provinceCode == null">
+            essential_information e
+        </if>
+        <if test="provinceCode != null">
+            essential_information_${provinceCode} e
+        </if>
+
         <if test="size != null and index != null">
-        limit ${index}, ${size}
+            limit ${index}, ${size}
         </if>
     </select>
 
     <select id="countAllData" parameterType="java.lang.String" resultType="java.lang.Long">
         select
             count(1)
-        <include refid="baseConditions"/>
+        from
+        <if test="provinceCode == null">
+            essential_information e
+        </if>
+        <if test="provinceCode != null">
+            essential_information_${provinceCode} e
+        </if>
     </select>
 </mapper>

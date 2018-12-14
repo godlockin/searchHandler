@@ -1,6 +1,7 @@
 package com.tigerobo.searchhandler.service.impl;
 
-import com.tigerobo.searchhandler.common.component.DataTransportThread;
+import com.tigerobo.searchhandler.common.LocalCache;
+import com.tigerobo.searchhandler.common.component.DataTransportMonitorThread;
 import com.tigerobo.searchhandler.common.constants.BusinessConstants;
 import com.tigerobo.searchhandler.common.utils.DataUtils;
 import com.tigerobo.searchhandler.dao.BusinessDao;
@@ -16,8 +17,7 @@ import javax.annotation.PostConstruct;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -25,7 +25,8 @@ public class DataTransportServiceImpl implements DataTransportService {
 
     @Value("${paging.pageSize}")
     private Integer pageSize;
-    private static int DEFAULT_PAGE_SIZE = 5000;
+    @Value("${threadpool.keep-alive-num}")
+    private Integer threadNum;
 
     @Value("${elasticsearch.index}")
     private String esIndex;
@@ -36,12 +37,12 @@ public class DataTransportServiceImpl implements DataTransportService {
     private ESService esService;
     @Autowired
     private BusinessDao businessDao;
-    private ExecutorService executorService;
+    private DataTransportMonitorThread monitorThread;
 
     @Override
     public Long provinceDump(String provinceCode) {
         Long count = 0L;
-        if (StringUtils.isBlank(provinceCode) || BusinessConstants.PROVINCE_MAP.containsKey(provinceCode)) {
+        if (StringUtils.isBlank(provinceCode) || !BusinessConstants.PROVINCE_MAP.containsKey(provinceCode)) {
             log.error("No province info found");
             return count;
         }
@@ -55,18 +56,24 @@ public class DataTransportServiceImpl implements DataTransportService {
         }
 
         Map<String, Object> param = new HashMap<>();
-        param.put("provinceCode", provinceCode);
-        param.put("provinceName", provinceName);
+        param.put(BusinessConstants.QueryConfig.KEY_PROVINCE_CODE, provinceCode);
+        param.put(BusinessConstants.QueryConfig.KEY_PROVINCE_NAME, provinceName);
+        param.put(BusinessConstants.QueryConfig.KEY_PAGE_SIZE, pageSize);
+        param.put(BusinessConstants.QueryConfig.KEY_ESINDEX, esIndex);
+        param.put(BusinessConstants.QueryConfig.KEY_ESTYPE, esType);
+        param.put(BusinessConstants.QueryConfig.KEY_QUERY_INDEX, BusinessConstants.QueryConfig.DEFAULT_QUERY_INDEX);
+        param.put(BusinessConstants.QueryConfig.KEY_QUERY_SIZE, pageSize);
+
         if (pageSize < count) {
             long pageCount = count / pageSize;
             for (long index = 0; index < pageCount + 1; index++) {
-                param.put("page", index * pageSize);
-                param.put("size", pageSize);
-                executorService.submit(buildDataTransportThread(param));
+                param.put(BusinessConstants.QueryConfig.KEY_QUERY_INDEX, index * pageSize);
+                LocalCache.put(provinceCode, new HashMap<>(param));
             }
         } else {
-            executorService.submit(buildDataTransportThread(param));
+            LocalCache.put(provinceCode, new HashMap<>(param));
         }
+
         log.info("[{}] data for [{}]-[{}] done", count, provinceCode, provinceName);
         return count;
     }
@@ -75,39 +82,23 @@ public class DataTransportServiceImpl implements DataTransportService {
     public Long fullDumpData() {
         log.info("Try to full dump data");
 
-        long count = 0L;
-        Iterator<Map.Entry<String, String>> it = BusinessConstants.PROVINCE_MAP.entrySet().iterator();
-        while (it.hasNext()) {
-            Map.Entry<String, String> entry = it.next();
-            String provinceCode = entry.getKey();
-            count += provinceDump(provinceCode);
-        }
+        long count = BusinessConstants.PROVINCE_MAP.keySet().stream()
+                .collect(Collectors.summarizingLong(code -> provinceDump(code))).getSum();
         log.info("Handled {} data in total", count);
         return count;
     }
 
-    private DataTransportThread buildDataTransportThread(Map<String, Object> param) {
-        DataTransportThread t = new DataTransportThread();
-        t.setBusinessDao(businessDao);
-        t.setEsService(esService);
-        t.setPageSize(pageSize);
-        t.setEsIndex(esIndex);
-        t.setEsType(esType);
-
-        t.setIndex(DataUtils.getNotNullValue(param, "page", Long.class, 0L));
-        t.setSize(DataUtils.getNotNullValue(param, "size", Integer.class, DEFAULT_PAGE_SIZE));
-        t.setProvinceCode(DataUtils.getNotNullValue(param, "provinceCode", String.class, ""));
-        t.setProvinceName(DataUtils.getNotNullValue(param, "provinceName", String.class, ""));
-        return t;
-    }
-
     @PostConstruct
     void init() {
-        pageSize = DataUtils.handleNullValue(pageSize, Integer.class, DEFAULT_PAGE_SIZE);
+        // init static variables
+        pageSize = DataUtils.handleNullValue(pageSize, Integer.class, BusinessConstants.QueryConfig.DEFAULT_PAGE_SIZE);
+        threadNum = DataUtils.handleNullValue(threadNum, Integer.class, BusinessConstants.QueryConfig.DEFAULT_THREAD_NUM);
 
-        int poolSize = Runtime.getRuntime().availableProcessors() * 2;
-        BlockingQueue<Runnable> queue = new ArrayBlockingQueue<>(1024);
-        RejectedExecutionHandler policy = new ThreadPoolExecutor.DiscardPolicy();
-        executorService = new ThreadPoolExecutor(poolSize, poolSize, 10, TimeUnit.SECONDS, queue, policy);
+        // init a monitor thread to provide & consume the query tasks
+        monitorThread = new DataTransportMonitorThread();
+        monitorThread.setBusinessDao(businessDao);
+        monitorThread.setEsService(esService);
+        monitorThread.setThreadNum(threadNum);
+        monitorThread.start();
     }
 }
