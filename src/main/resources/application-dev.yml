@@ -27,3 +27,5 @@ paging:
 
 threadpool:
   keep-alive-num: 1024
+
+dailyDump: false
