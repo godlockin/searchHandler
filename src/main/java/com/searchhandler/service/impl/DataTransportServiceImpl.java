@@ -2,17 +2,17 @@ package com.searchhandler.service.impl;
 
 import com.alibaba.fastjson.JSON;
 import com.searchhandler.common.LocalCache;
-import com.searchhandler.dao.BusinessDao;
-import com.searchhandler.service.DataTransportService;
-import com.searchhandler.service.ESService;
+import com.searchhandler.common.LocalConfig;
 import com.searchhandler.common.component.DataTransportMonitorThread;
 import com.searchhandler.common.constants.BusinessConstants;
 import com.searchhandler.common.constants.BusinessConstants.QueryConfig;
 import com.searchhandler.common.utils.DataUtils;
+import com.searchhandler.dao.BusinessDao;
+import com.searchhandler.service.DataTransportService;
+import com.searchhandler.service.ESService;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.PostConstruct;
@@ -27,20 +27,16 @@ import java.util.stream.Collectors;
 @Service
 public class DataTransportServiceImpl implements DataTransportService {
 
-    @Value("${paging.pageSize}")
     private Integer pageSize;
-    @Value("${threadpool.keep-alive-num}")
     private Integer threadNum;
-
-    @Value("${elasticsearch.index}")
-    private String esIndex;
-    @Value("${elasticsearch.type}")
-    private String esType;
-
-    @Autowired
     private ESService esService;
-    @Autowired
     private BusinessDao businessDao;
+
+    @Autowired
+    public DataTransportServiceImpl(ESService esService, BusinessDao businessDao) {
+        this.esService = esService;
+        this.businessDao = businessDao;
+    }
 
     @Override
     public Long coreDump(Map<String, Object> config) {
@@ -61,6 +57,7 @@ public class DataTransportServiceImpl implements DataTransportService {
         }
 
         Map<String, Object> param = new HashMap<>(config);
+        param.put(QueryConfig.KEY_QUERY_INDEX, QueryConfig.DEFAULT_QUERY_INDEX);
         param.put(QueryConfig.KEY_PAGE_SIZE, pageSize);
         log.info("Got query param:[{}]", param);
 
@@ -100,7 +97,7 @@ public class DataTransportServiceImpl implements DataTransportService {
 
     private Long doDumpData(Function<String, Long> function) {
         log.info("Try to dump data");
-        long count = BusinessConstants.PROVINCE_MAP.keySet().stream()
+        long count = BusinessConstants.PROVINCE_MAP.keySet().parallelStream()
                 .collect(Collectors.summarizingLong(function::apply)).getSum();
         log.info("Handled {} data in total", count);
         return count;
@@ -122,9 +119,15 @@ public class DataTransportServiceImpl implements DataTransportService {
             try {
                 Map result = esService.complexSearch(param);
                 Map agg = DataUtils.getNotNullValue(result, BusinessConstants.ESConfig.AGGREGATION_KEY, Map.class, new HashMap<>());
-                serialNoInfo.put(BusinessConstants.DataDumpConfig.ESSENTIAL_INFORMATION_KEY, agg.get("essential_information.value"));
-                serialNoInfo.put(BusinessConstants.DataDumpConfig.KEY_PERSONNEL_KEY, agg.get("key_personnel.kps_max.value"));
-                serialNoInfo.put(BusinessConstants.DataDumpConfig.SHAREHOLDER_INFORMATION_KEY, agg.get("shareholder_information.sis_max.value"));
+                serialNoInfo.put(BusinessConstants.DataDumpConfig.ESSENTIAL_INFORMATION_KEY,
+                        Double.valueOf((String) agg.get("essential_information.value")).longValue()
+                );
+                serialNoInfo.put(BusinessConstants.DataDumpConfig.KEY_PERSONNEL_KEY,
+                        Double.valueOf((String) agg.get("key_personnel.kps_max.value")).longValue()
+                );
+                serialNoInfo.put(BusinessConstants.DataDumpConfig.SHAREHOLDER_INFORMATION_KEY,
+                        Double.valueOf((String) agg.get("shareholder_information.sis_max.value")).longValue()
+                );
 
                 serialNoInfo.put("essential_time", agg.get("essential_time.value"));
                 serialNoInfo.put("key_personnel_time", agg.get("key_personnel_time.kpt_max.value"));
@@ -250,8 +253,8 @@ public class DataTransportServiceImpl implements DataTransportService {
     @PostConstruct
     void init() {
         // init static variables
-        pageSize = DataUtils.handleNullValue(pageSize, Integer.class, QueryConfig.DEFAULT_PAGE_SIZE);
-        threadNum = DataUtils.handleNullValue(threadNum, Integer.class, QueryConfig.DEFAULT_THREAD_NUM);
+        pageSize = LocalConfig.get(BusinessConstants.SysConfig.QUERY_PAGE_SIZE_KEY, Integer.class, QueryConfig.DEFAULT_PAGE_SIZE);
+        threadNum = LocalConfig.get(BusinessConstants.SysConfig.THREAD_POOL_SIZE_KEY, Integer.class, QueryConfig.DEFAULT_PAGE_SIZE);
 
         // init a monitor thread to provide & consume the query tasks
         DataTransportMonitorThread monitorThread = new DataTransportMonitorThread();

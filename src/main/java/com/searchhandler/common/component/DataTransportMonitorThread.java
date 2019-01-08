@@ -26,7 +26,8 @@ public class DataTransportMonitorThread extends Thread {
     private BusinessDao businessDao;
     private ExecutorService executorService;
     private AtomicInteger waitCount = new AtomicInteger(0);
-    private ConcurrentHashMap<String, Map> taskCache = new ConcurrentHashMap<>();
+    private ConcurrentLinkedQueue<Map> queue = new ConcurrentLinkedQueue<>();
+    private Consumer consumer;
 
     @Override
     public void run() {
@@ -34,8 +35,6 @@ public class DataTransportMonitorThread extends Thread {
         try {
 
             init();
-            // start a monitor task to monitor this
-            new Consumer().start();
 
             while (true) {
                 // loop the code and invoke the data transport tasks
@@ -52,13 +51,15 @@ public class DataTransportMonitorThread extends Thread {
                             } else {
                                 // count the task and start
                                 waitCount.getAndIncrement();
-                                String key = provinceCode + "_" + queryIndex;
-                                Future<Long> taskFuture = executorService.submit(new DataTransportCallable(config, esService, businessDao));
-                                Map taskInfo = new HashMap() {{
-                                    put("task", taskFuture);
+                                queue.add(new HashMap() {{
+                                    put("task", executorService.submit(new DataTransportCallable(config, esService, businessDao)));
                                     put("config", config);
-                                }};
-                                taskCache.put(key, new HashMap(taskInfo));
+                                }});
+
+                                if (null == consumer) {
+                                    consumer = new Consumer();
+                                    consumer.start();
+                                }
                             }
                         }
                     }
@@ -84,8 +85,18 @@ public class DataTransportMonitorThread extends Thread {
         public void run() {
 
             log.info("Start to consume the tasks");
+            int retry = 1000;
             while (true) {
-                taskCache.forEach((taskKey, taskConfig) -> {
+                try {
+                    Map taskConfig = Optional.ofNullable(queue.poll()).orElse(new HashMap());
+                    if (taskConfig.isEmpty() && --retry > 0) {
+                        Thread.sleep(1000);
+                        continue;
+                    } else if (0 == waitCount.decrementAndGet()) {
+                        log.info("Finished waiting for the tasks for now");
+                        break;
+                    }
+
                     Map config = (Map) taskConfig.get("config");
                     Future<Long> taskFuture = (Future) taskConfig.get("task");
                     log.info("Wait for result for config:[{}]", config);
@@ -94,21 +105,19 @@ public class DataTransportMonitorThread extends Thread {
                         // get the query result
                         // remove the watching task
                         Long result = taskFuture.get();
-                        taskCache.remove(taskKey);
                         if (0 >= result) {
                             log.error("Didn't get result for config:[{}]", config);
                         } else {
                             log.info("Handled {} data", result);
                         }
-
-                        if (0 == waitCount.decrementAndGet()) {
-                            log.info("Finished waiting for the tasks for now");
-                        }
                     } catch (Exception e) {
                         e.printStackTrace();
                         log.error("Error happened when we call for the result for:[{}]", config);
                     }
-                });
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    log.error("Error happened when we monitor the result");
+                }
             }
         }
     }

@@ -31,13 +31,11 @@ public class DataUtils {
             return;
         }
 
-        long size = objects.length;
         for (Object object : objects) {
             if (null == object) {
                 handleFailure(throwAble, errMsg);
             } else if (object instanceof String) {
-                String str = DataUtils.handleNullValue(object, String.class, "").trim();
-                if (StringUtils.isBlank(str)) {
+                if (StringUtils.isBlank(DataUtils.handleNullValue(object, String.class, ""))) {
                     handleFailure(throwAble, errMsg);
                 }
             }
@@ -53,23 +51,11 @@ public class DataUtils {
     }
 
     public static <T> T getNotNullValue(Map base, String key, Class<T> clazz, Object defaultValue) {
-        try {
-            return handleNullValue(base.get(key), clazz, defaultValue);
-        } catch (Exception e) {
-            e.printStackTrace();
-            log.error("Error happened when we try to get value," + e);
-            return clazz.cast(defaultValue);
-        }
+        return handleNullValue(base.get(key), clazz, defaultValue);
     }
 
     public static <T> T handleNullValue(Object base, Class<T> clazz, Object defaultValue) {
-        try {
-            return clazz.cast(Optional.ofNullable(base).orElse(defaultValue));
-        } catch (Exception e) {
-            e.printStackTrace();
-            log.error("Error happened when we try to get value," + e);
-            return clazz.cast(defaultValue);
-        }
+        return clazz.cast(Optional.ofNullable(base).orElse(defaultValue));
     }
 
     public static String formatDate(Date date) {

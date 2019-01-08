@@ -1,4 +1,8 @@
 elasticsearch:
+  connect-timeout: 5000
+  socket-timeout: 40000
+  connection-request-timeout: 1000
+  max-retry-tineout-millis: 60000
   address: localhost
   port:
     http: 9200
@@ -7,20 +11,20 @@ elasticsearch:
     size: 5000
     flush: 5000
     concurrent: 3
-  index:
-  type:
+  index: business_data_current_reader
+  type: business_data
 
 spring:
   datasource:
     url: jdbc:mysql://localhost:3006/business?useUnicode=true&characterEncoding=utf-8&zeroDateTimeBehavior=CONVERT_TO_NULL
-    username:
-    password:
+    username: root
+    password: root
   rabbitmq:
     host: localhost
     port: 5672
     username: guest
     password: guest
-    queue-name: 
+    queue-name:  queue
 
 paging:
   pageSize: 5000

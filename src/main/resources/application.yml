@@ -45,9 +45,3 @@ mybatis:
   config-location: classpath:mybatis-config.xml
   mapper-locations: mapper/*.xml
   type-aliases-package: com.tigerobo.searchhandler.entity
-
-elasticsearch:
-  connect-timeout: 5000
-  socket-timeout: 40000
-  connection-request-timeout: 1000
-  max-retry-tineout-millis: 60000

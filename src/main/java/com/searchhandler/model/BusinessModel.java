@@ -40,7 +40,7 @@ public class BusinessModel implements Serializable {
         this.province_name = provinceName;
     }
 
-    public void initEssentialData(BusinessInformation bi) {
+    public BusinessModel initEssentialData(BusinessInformation bi) {
         this.serialno = bi.getSerialno();
         this.correlation_no = bi.getCorrelationNo();
         this.registration_no = bi.getRegistrationNo();
@@ -58,5 +58,6 @@ public class BusinessModel implements Serializable {
         this.approval_date = DataUtils.formatDate(bi.getApprovalDate());
         this.create_time = DataUtils.formatDate(bi.getCreateTime());
         this.spider_time = DataUtils.formatDate(bi.getSpiderTime());
+        return this;
     }
 }

@@ -1,14 +1,20 @@
 package com.searchhandler.service.impl;
 
-import com.searchhandler.service.ESService;
+import com.searchhandler.common.LocalConfig;
 import com.searchhandler.common.constants.BusinessConstants.ESConfig;
+import com.searchhandler.common.constants.BusinessConstants.ResultConfig;
+import com.searchhandler.common.constants.BusinessConstants.SysConfig;
 import com.searchhandler.common.constants.ResultEnum;
 import com.searchhandler.common.utils.DataUtils;
 import com.searchhandler.exception.SearchHandlerException;
+import com.searchhandler.service.ESService;
+import lombok.Data;
+import lombok.Synchronized;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpHost;
 import org.apache.http.client.config.RequestConfig;
+import org.apache.lucene.search.join.ScoreMode;
 import org.elasticsearch.action.DocWriteRequest;
 import org.elasticsearch.action.admin.indices.analyze.AnalyzeRequest;
 import org.elasticsearch.action.admin.indices.analyze.AnalyzeResponse;
@@ -37,7 +43,6 @@ import org.elasticsearch.search.aggregations.metrics.ParsedSingleValueNumericMet
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.search.fetch.subphase.highlight.HighlightBuilder;
 import org.elasticsearch.search.fetch.subphase.highlight.HighlightField;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
@@ -49,33 +54,24 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+@Data
 @Slf4j
 @Service
+@SuppressWarnings({ "unchecked" })
 public class ESServiceImpl implements ESService {
 
-    @Value("${elasticsearch.address}")
+    private String ES_TYPE;
+    private String ES_INDEX;
     private String ES_ADDRESSES;
-    @Value("${elasticsearch.port.http}")
     private Integer ES_HTTP_PORT;
-    @Value("${elasticsearch.bulk.size}")
-    private int ES_BULK_SIZE;
-    @Value("${elasticsearch.bulk.flush}")
-    private int ES_BULK_FLUSH;
-    @Value("${elasticsearch.bulk.concurrent}")
-    private int ES_BULK_CONCURRENT;
-    @Value("${elasticsearch.connect-timeout}")
-    private int ES_CONNECT_TIMEOUT;
-    @Value("${elasticsearch.socket-timeout}")
-    private int ES_SOCKET_TIMEOUT;
-    @Value("${elasticsearch.connection-request-timeout}")
-    private int ES_CONNECTION_REQUEST_TIMEOUT;
-    @Value("${elasticsearch.max-retry-tineout-millis}")
-    private int ES_MAX_RETRY_TINEOUT_MILLIS;
 
-    @Value("${elasticsearch.index}")
-    private String esIndex;
-    @Value("${elasticsearch.type}")
-    private String esType;
+    private int ES_BULK_SIZE;
+    private int ES_BULK_FLUSH;
+    private int ES_SOCKET_TIMEOUT;
+    private int ES_CONNECT_TIMEOUT;
+    private int ES_BULK_CONCURRENT;
+    private int ES_MAX_RETRY_TINEOUT_MILLIS;
+    private int ES_CONNECTION_REQUEST_TIMEOUT;
 
     private RequestOptions COMMON_OPTIONS = RequestOptions.DEFAULT.toBuilder().build();
     private static RestClient restClient;
@@ -93,7 +89,7 @@ public class ESServiceImpl implements ESService {
     }
 
     @Override
-    public Map doAnalyze(Map param) throws SearchHandlerException {
+    public Map doAnalyze(Map param) {
 
         Map result = getBaseResult();
 
@@ -106,7 +102,7 @@ public class ESServiceImpl implements ESService {
         AnalyzeRequest request = new AnalyzeRequest();
 
         // text(s)
-        textList.forEach(x -> request.text(String.valueOf(x).trim()));
+        textList.parallelStream().forEach(x -> request.text(String.valueOf(x).trim()));
 
         // analyzer
         request.analyzer(DataUtils.getNotNullValue(param, ESConfig.ANALYZER_KEY, String.class, ESConfig.DEFAULT_ANALYZER));
@@ -119,7 +115,7 @@ public class ESServiceImpl implements ESService {
 
         // char filters
         List charFilters = DataUtils.getNotNullValue(param, ESConfig.CHAR_FILTER_KEY, List.class, new ArrayList<>());
-        charFilters.stream().forEach(x -> {
+        charFilters.parallelStream().forEach(x -> {
             if (x instanceof String)
                 request.addCharFilter((String) x);
             if (x instanceof Map)
@@ -128,7 +124,7 @@ public class ESServiceImpl implements ESService {
 
         // token filter
         List tokenFilters = DataUtils.getNotNullValue(param, ESConfig.TOKEN_FILTER_KEY, List.class, new ArrayList<>());
-        tokenFilters.stream().forEach(x -> {
+        tokenFilters.parallelStream().forEach(x -> {
             if (x instanceof String)
                 request.addTokenFilter((String) x);
             if (x instanceof Map)
@@ -149,21 +145,13 @@ public class ESServiceImpl implements ESService {
             AnalyzeResponse response = restHighLevelClient.indices().analyze(request, COMMON_OPTIONS);
             List terms = Optional.ofNullable(response.getTokens()).orElse(new ArrayList<>())
                     .stream().map(AnalyzeResponse.AnalyzeToken::getTerm).collect(Collectors.toList());
-            result.put("data", terms);
+            result.put(ResultConfig.DATA_KEY, terms);
         } catch (Exception e) {
             e.printStackTrace();
             log.error("Error happened when we do analyze for:[{}], {}", textList, e);
         }
 
         return result;
-    }
-
-    private Map getBaseResult() {
-        return new HashMap() {{
-                put("total", 0);
-                put("data", new ArrayList<>());
-                put("aggregation", new HashMap<>());
-            }};
     }
 
     @Override
@@ -175,15 +163,13 @@ public class ESServiceImpl implements ESService {
         // build query conditions
         Map query = DataUtils.getNotNullValue(param, ESConfig.QUERY_KEY, Map.class, new HashMap<>());
         if (!query.isEmpty()) {
-            BoolQueryBuilder queryBoolQuery = buildBoolQuery(query);
-            boolQueryBuilder.must(queryBoolQuery);
+            boolQueryBuilder.must(buildBoolQuery(query));
         }
 
         // build filter conditions
         Map filter = DataUtils.getNotNullValue(param, ESConfig.FILTER_KEY, Map.class, new HashMap<>());
         if (!filter.isEmpty()) {
-            BoolQueryBuilder queryBoolQuery = buildBoolQuery(filter);
-            boolQueryBuilder.filter(queryBoolQuery);
+            boolQueryBuilder.filter(buildBoolQuery(filter));
         }
 
         // set query & filter conditions
@@ -199,7 +185,7 @@ public class ESServiceImpl implements ESService {
         List<String> highlightList = DataUtils.getNotNullValue(param, ESConfig.HIGHLIGHT_KEY, List.class, new ArrayList<>());
         if (!highlightList.isEmpty()) {
             HighlightBuilder highlightBuilder = new HighlightBuilder();
-            highlightList.stream().forEach(x -> highlightBuilder.field(x));
+            highlightList.parallelStream().forEach(highlightBuilder::field);
             sourceBuilder.highlighter(highlightBuilder);
         }
 
@@ -229,7 +215,7 @@ public class ESServiceImpl implements ESService {
             List subAgg = DataUtils.getNotNullValue(param, ESConfig.SUB_AGG_KEY, List.class, new ArrayList<>());
             String path = DataUtils.getNotNullValue(param, ESConfig.PATH_KEY, String.class, "");
             AggregationBuilder aggregationBuilder = AggregationBuilders.nested(aggrName, path);
-            subAgg.forEach(x -> aggregationBuilder.subAggregation(buildCommonAgg((Map) x)));
+            subAgg.parallelStream().forEach(x -> aggregationBuilder.subAggregation(buildCommonAgg((Map) x)));
             return aggregationBuilder;
         }
 
@@ -269,16 +255,24 @@ public class ESServiceImpl implements ESService {
                 return buildRangeQuery(param);
             } else if (ESConfig.MULTIMATCH_KEY.equalsIgnoreCase(type)) {
                 return buildMultiMatchQuery(param);
+            } else if (ESConfig.NESTED_KEY.equalsIgnoreCase(type)) {
+                return buildNestedQuery(param);
             }
             return QueryBuilders.matchAllQuery();
         };
+    }
+
+    private QueryBuilder buildNestedQuery(Map param) {
+        String path = DataUtils.getNotNullValue(param, ESConfig.PATH_KEY, String.class, "");
+        Map query = DataUtils.getNotNullValue(param, ESConfig.QUERY_KEY, Map.class, new HashMap<>());
+        return QueryBuilders.nestedQuery(path, buildCommonQuery().apply(query), ScoreMode.Avg);
     }
 
     private QueryBuilder buildMultiMatchQuery(Map param) {
         Object value = DataUtils.getNotNullValue(param, ESConfig.SIMPLE_QUERY_VALUE_KEY, Object.class, new Object());
         Object fieldNames = DataUtils.getNotNullValue(param, ESConfig.FIELDNAMES_KEY, Object.class, new Object());
         Collection fieldNamesCollection = (fieldNames instanceof Collection) ? (Collection) fieldNames : Collections.singletonList(fieldNames);
-        MultiMatchQueryBuilder multiMatchQueryBuilder = QueryBuilders.multiMatchQuery(value, new String[0]);
+        MultiMatchQueryBuilder multiMatchQueryBuilder = QueryBuilders.multiMatchQuery(value);
         fieldNamesCollection.parallelStream().forEach(x -> {
             String nameStr = (String) x;
             if (0 > nameStr.indexOf('^')) {
@@ -294,7 +288,7 @@ public class ESServiceImpl implements ESService {
     private QueryBuilder buildRangeQuery(Map param) {
         Object field = DataUtils.getNotNullValue(param, ESConfig.SIMPLE_QUERY_FIELD_KEY, Object.class, new Object());
         RangeQueryBuilder queryBuilder = QueryBuilders.rangeQuery(String.valueOf(field).trim());
-        param.keySet().forEach(x -> {
+        param.keySet().parallelStream().forEach(x -> {
             String key = (String) x;
             Object value = DataUtils.getNotNullValue(param, key, Object.class, new Object());
             switch (key) {
@@ -359,7 +353,7 @@ public class ESServiceImpl implements ESService {
             case ESConfig.MATCH_PHRASE_PREFIX_KEY:
                 return QueryBuilders.matchPhrasePrefixQuery(String.valueOf(field).trim(), value);
             default:
-                return QueryBuilders.termQuery(String.valueOf(field).trim(), value);
+                return QueryBuilders.termsQuery(String.valueOf(field).trim(), (Collection<?>) value);
         }
     }
 
@@ -367,13 +361,13 @@ public class ESServiceImpl implements ESService {
         SearchSourceBuilder sourceBuilder = makeBaseSearchBuilder(param);
         Object queryItem = DataUtils.getNotNullValue(param, ESConfig.QUERY_KEY, Object.class, "");
         List<String> fieldList = DataUtils.getNotNullValue(param, ESConfig.FIELDNAMES_KEY, List.class, new ArrayList<>());
-        String[] fieldArr = fieldList.toArray(new String[fieldList.size()]);
+        String[] fieldArr = fieldList.parallelStream().toArray(String[]::new);
         MultiMatchQueryBuilder multiMatchQueryBuilder = QueryBuilders.multiMatchQuery(queryItem, fieldArr);
         sourceBuilder.query(multiMatchQueryBuilder);
 
         HighlightBuilder highlightBuilder = new HighlightBuilder();
-        List<String> highlightList = DataUtils.getNotNullValue(param, ESConfig.HIGHLIGHT_KEY, List.class, new ArrayList<>());
-        highlightList.forEach(x -> highlightBuilder.field(x));
+        DataUtils.getNotNullValue(param, ESConfig.HIGHLIGHT_KEY, List.class, new ArrayList<>()).parallelStream()
+                .forEach(x -> highlightBuilder.field((String) x));
         sourceBuilder.highlighter(highlightBuilder);
         return sourceBuilder;
     }
@@ -390,8 +384,8 @@ public class ESServiceImpl implements ESService {
     }
 
     private Map fullSearch(Map param, SearchSourceBuilder sourceBuilder) throws SearchHandlerException {
-        String trgtIndex = DataUtils.getNotNullValue(param, "index", String.class, esIndex);
-        String trgtType = DataUtils.getNotNullValue(param, "type", String.class, esType);
+        String trgtIndex = DataUtils.getNotNullValue(param, "index", String.class, ES_INDEX);
+        String trgtType = DataUtils.getNotNullValue(param, "type", String.class, ES_TYPE);
         if (StringUtils.isBlank(trgtIndex) || StringUtils.isBlank(trgtType)) {
             log.error("Can't find index:[{}] or type:[{}] info", trgtIndex, trgtType);
             return new HashMap();
@@ -419,28 +413,28 @@ public class ESServiceImpl implements ESService {
         long total = hits.totalHits;
         log.info("Got {} data in total", total);
         Map result = getBaseResult();
-        result.put("total", hits.totalHits);
+        result.put(ResultConfig.TOTAL_KEY, hits.totalHits);
 
         List dataList = Stream.of(hits.getHits()).map(x -> {
             Map<String, Object> sourceAsMap = x.getSourceAsMap();
-
+            sourceAsMap.put(ESConfig.SCORE_KEY, x.getScore());
             Map<String, HighlightField> highlightFields = x.getHighlightFields();
             if (!highlightFields.isEmpty()) {
                 Map highlight = new HashMap();
                 highlightFields.forEach((k, v) -> highlight.put(k, v.fragments()[0].string()));
-                sourceAsMap.put("hightlight", highlight);
+                sourceAsMap.put(ResultConfig.HIGHLIGH_KEY, highlight);
             }
             return sourceAsMap;
         }).collect(Collectors.toList());
 
-        result.put("data", dataList);
+        result.put(ResultConfig.DATA_KEY, dataList);
         log.info("Build as {} data", dataList.size());
 
         Map<String, String> aggMap = new HashMap<>();
         List<Aggregation> aggregations = Optional.ofNullable(response.getAggregations()).orElse(new Aggregations(Collections.emptyList())).asList();
         aggregations.forEach(aggregation -> getAggrInfo(aggMap, "", aggregation));
         log.info("Build as {} aggregation data", aggMap.size());
-        result.put("aggregation", aggMap);
+        result.put(ResultConfig.AGGREGATION_KEY, aggMap);
         return result;
     }
 
@@ -461,21 +455,21 @@ public class ESServiceImpl implements ESService {
     @Override
     public Integer bulkInsert(String idKey, List dataList) {
 
-        return bulkInsert(esIndex, esType, idKey, dataList);
+        return bulkInsert(ES_INDEX, ES_TYPE, idKey, dataList);
     }
 
     @Override
     public Integer bulkInsert(String index, String type, String idKey, List dataList) {
 
-        String trgtIndex = (StringUtils.isBlank(index)) ? esIndex : index;
-        String trgtType = (StringUtils.isBlank(type)) ? esType : type;
+        String trgtIndex = (StringUtils.isBlank(index)) ? ES_INDEX : index;
+        String trgtType = (StringUtils.isBlank(type)) ? ES_TYPE : type;
         if (StringUtils.isBlank(trgtIndex) || StringUtils.isBlank(trgtType) || CollectionUtils.isEmpty(dataList)) {
             log.error("Important info missing for index:[{}] type:[{}] and data:[{}]", trgtIndex, trgtType, dataList);
             return 0;
         }
 
         log.info("Try to bulk insert into index:[{}] type:[{}]", index, type);
-        dataList.forEach(x -> {
+        dataList.parallelStream().forEach(x -> {
                     Map data = (Map) x;
                     String pk = DataUtils.getNotNullValue(data, idKey, String.class, "");
                     IndexRequest indexRequest = StringUtils.isNotBlank(pk) ? new IndexRequest(trgtIndex, trgtType, pk) : new IndexRequest(trgtIndex, trgtType);
@@ -504,6 +498,14 @@ public class ESServiceImpl implements ESService {
         }*/
 
         bulkProcessor.add(request);
+    }
+
+    private Map getBaseResult() {
+        return new HashMap() {{
+            put(ResultConfig.TOTAL_KEY, 0);
+            put(ResultConfig.DATA_KEY, new ArrayList<>());
+            put(ResultConfig.AGGREGATION_KEY, new HashMap<>());
+        }};
     }
 
     @Override
@@ -538,21 +540,19 @@ public class ESServiceImpl implements ESService {
         return restHighLevelClient;
     }
 
+    @Override
+    @Synchronized
     @PostConstruct
-    private void initESClient() throws SearchHandlerException {
+    public void initESClient() throws SearchHandlerException {
+        log.info("Init ES client");
+        closeESClient();
         initStaticVariables();
-        Integer esHttpPort = (null == ES_HTTP_PORT || 0 == ES_HTTP_PORT) ? ESConfig.DEFAULT_ES_HTTP_PORT : ES_HTTP_PORT;
-        String esAddrs = (StringUtils.isNotBlank(ES_ADDRESSES)) ? ES_ADDRESSES : ESConfig.DEFAULT_ES_ADDRESSES;
 
         try {
-            String[] addrArry = esAddrs.split(",");
-            int size = addrArry.length;
-            HttpHost[] httpHosts = new HttpHost[size];
-            for (int i = 0; i < size; i++) {
-                String addr = addrArry[i];
-                esHttpAddress.add(addr + esHttpPort);
-                httpHosts[i] = new HttpHost(addr, esHttpPort, "http");
-            }
+            HttpHost[] httpHosts = Arrays.stream(ES_ADDRESSES.split(",")).parallel().map(x -> {
+                esHttpAddress.add(x + ES_HTTP_PORT);
+                return new HttpHost(x, ES_HTTP_PORT, "http");
+            }).collect(Collectors.toList()).parallelStream().toArray(HttpHost[]::new);
 
             RestClientBuilder builder = RestClient.builder(httpHosts)
                     .setRequestConfigCallback((RequestConfig.Builder requestConfigBuilder) ->
@@ -607,7 +607,7 @@ public class ESServiceImpl implements ESService {
             public void afterBulk(long executionId, BulkRequest request, Throwable failure) {
                 failure.printStackTrace();
                 log.error("Bulk finished with error:[{}]", failure.getMessage());
-                request.requests().stream().filter(x -> x instanceof IndexRequest)
+                request.requests().parallelStream().filter(x -> x instanceof IndexRequest)
                         .forEach(x -> {
                             Map source = ((IndexRequest) x).sourceAsMap();
                             String pk = DataUtils.getNotNullValue(source, "id", String.class, "");
@@ -618,22 +618,33 @@ public class ESServiceImpl implements ESService {
     }
 
     private void initStaticVariables() {
-
-        ES_BULK_SIZE = DataUtils.handleNullValue(ES_BULK_SIZE, Integer.class, ESConfig.DEFAULT_ES_BULK_SIZE);
-        ES_BULK_FLUSH = DataUtils.handleNullValue(ES_BULK_FLUSH, Integer.class, ESConfig.DEFAULT_ES_BULK_FLUSH);
-        ES_BULK_CONCURRENT = DataUtils.handleNullValue(ES_BULK_CONCURRENT, Integer.class, ESConfig.DEFAULT_ES_BULK_CONCURRENT);
-        ES_CONNECT_TIMEOUT = DataUtils.handleNullValue(ES_CONNECT_TIMEOUT, Integer.class, ESConfig.DEFAULT_ES_CONNECT_TIMEOUT);
-        ES_SOCKET_TIMEOUT = DataUtils.handleNullValue(ES_SOCKET_TIMEOUT, Integer.class, ESConfig.DEFAULT_ES_SOCKET_TIMEOUT);
-        ES_CONNECTION_REQUEST_TIMEOUT = DataUtils.handleNullValue(ES_CONNECTION_REQUEST_TIMEOUT, Integer.class, ESConfig.DEFAULT_ES_CONNECTION_REQUEST_TIMEOUT);
-        ES_MAX_RETRY_TINEOUT_MILLIS = DataUtils.handleNullValue(ES_MAX_RETRY_TINEOUT_MILLIS, Integer.class, ESConfig.DEFAULT_ES_MAX_RETRY_TINEOUT_MILLIS);
+        esHttpAddress = new ArrayList<>();
+        ES_TYPE = LocalConfig.get(SysConfig.ES_TYPE_KEY, String.class, ESConfig.DEFAULT_ES_TYPE);
+        ES_INDEX = LocalConfig.get(SysConfig.ES_INDEX_KEY, String.class, ESConfig.DEFAULT_ES_INDEX);
+        ES_HTTP_PORT = LocalConfig.get(SysConfig.ES_HTTP_PORT_KEY, Integer.class, ESConfig.DEFAULT_ES_HTTP_PORT);
+        ES_ADDRESSES = LocalConfig.get(SysConfig.ES_ADDRESSES_KEY, String.class, ESConfig.DEFAULT_ES_ADDRESSES);
+        ES_BULK_SIZE = LocalConfig.get(SysConfig.ES_BULK_SIZE_KEY, Integer.class, ESConfig.DEFAULT_ES_BULK_SIZE);
+        ES_BULK_FLUSH = LocalConfig.get(SysConfig.ES_BULK_FLUSH_KEY, Integer.class, ESConfig.DEFAULT_ES_BULK_FLUSH);
+        ES_SOCKET_TIMEOUT = LocalConfig.get(SysConfig.ES_SOCKET_TIMEOUT_KEY, Integer.class, ESConfig.DEFAULT_ES_SOCKET_TIMEOUT);
+        ES_BULK_CONCURRENT = LocalConfig.get(SysConfig.ES_BULK_CONCURRENT_KEY, Integer.class, ESConfig.DEFAULT_ES_BULK_CONCURRENT);
+        ES_CONNECT_TIMEOUT = LocalConfig.get(SysConfig.ES_CONNECT_TIMEOUT_KEY, Integer.class, ESConfig.DEFAULT_ES_CONNECT_TIMEOUT);
+        ES_MAX_RETRY_TINEOUT_MILLIS = LocalConfig.get(SysConfig.ES_MAX_RETRY_TINEOUT_MILLIS_KEY, Integer.class, ESConfig.DEFAULT_ES_MAX_RETRY_TINEOUT_MILLIS);
+        ES_CONNECTION_REQUEST_TIMEOUT = LocalConfig.get(SysConfig.ES_CONNECTION_REQUEST_TIMEOUT_KEY, Integer.class, ESConfig.DEFAULT_ES_CONNECTION_REQUEST_TIMEOUT);
     }
 
     private void closeESClient() throws SearchHandlerException {
         try {
-            boolean terminated = bulkProcessor.awaitClose(30L, TimeUnit.SECONDS);
-            if (terminated) {
-                restClient.close();
-                restHighLevelClient.close();
+            if (null != bulkProcessor) {
+                boolean terminated = bulkProcessor.awaitClose(30L, TimeUnit.SECONDS);
+                if (terminated) {
+                    if (null != restClient) {
+                        restClient.close();
+                    }
+
+                    if (null != restHighLevelClient) {
+                        restHighLevelClient.close();
+                    }
+                }
             }
         } catch (Exception e) {
             e.printStackTrace();

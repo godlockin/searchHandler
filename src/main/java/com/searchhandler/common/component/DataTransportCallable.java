@@ -57,7 +57,7 @@ public class DataTransportCallable implements Callable<Long> {
         log.info("Try to load data for [{}]-[{}] and insert [{}]-[{}]", provinceCode, provinceName, esIndex, esType);
         try {
             long count = 0L;
-            if (StringUtils.isBlank(provinceCode) || StringUtils.isBlank(esIndex) || StringUtils.isBlank(esType)) {
+            if (StringUtils.isBlank(provinceCode)) {
                 log.error("Important info missing");
                 return count;
             }
@@ -75,17 +75,15 @@ public class DataTransportCallable implements Callable<Long> {
             List<BusinessInformation> dataList = businessDao.searchForProvince(param);
             int dataSize = dataList.size();
             log.info("Get {} data to be handled", dataSize);
-            long baseCorrelationNo = 0L;
-            long baseKSerialNo = 0;
-            long baseSSerialNo = 0;
-            boolean isSaved = true;
+            boolean isInit = true;
+            Set<Long> baseCorrelationNoSet = new HashSet<>();
+            Set<Long> baseKSerialNoSet = new HashSet<>();
+            Set<Long> baseSSerialNoSet = new HashSet<>();
             BusinessModel model = new BusinessModel(provinceCode, provinceName);
             for (BusinessInformation bi : dataList) {
-                isSaved = false;
-                long correlationNo = bi.getCorrelationNo();
                 // if switch base data, save &/| commit
-                if (correlationNo != baseCorrelationNo) {
-                    if (0 != baseCorrelationNo) {
+                if (baseCorrelationNoSet.add(bi.getCorrelationNo())) {
+                    if (!isInit) {
                         bulkList.add(convertModelToMap(model));
                         log.debug("Save data provinceCode:[{}]-[{}] serialno:[{}], correlationNo:[{}]",
                                 provinceCode, provinceName, model.getSerialno(), model.getCorrelation_no());
@@ -94,31 +92,25 @@ public class DataTransportCallable implements Callable<Long> {
                         if (bulkList.size() > pageSize) {
                             count += esService.bulkInsert(esIndex, esType, "id", bulkList);
                             bulkList = new ArrayList<>();
-                            isSaved = true;
                         }
                     }
-                    model = new BusinessModel(provinceCode, provinceName);
-                    model.initEssentialData(bi);
-                    baseCorrelationNo = correlationNo;
+                    model = new BusinessModel(provinceCode, provinceName).initEssentialData(bi);
+                    isInit = false;
                 }
 
                 // append new key person
-                if (null != bi.getKSerialno() && baseKSerialNo != bi.getKSerialno()) {
+                if (baseKSerialNoSet.add(bi.getKSerialno())) {
                     model.getKey_personnel().add(new KeyPesonModel(bi));
-                    baseKSerialNo = bi.getKSerialno();
                 }
 
                 // append new share holder
-                if (null != bi.getSSerialno() && baseSSerialNo != bi.getSSerialno()) {
+                if (baseSSerialNoSet.add(bi.getSSerialno())) {
                     model.getShareholder_information().add(new ShareHolderModel(bi));
-                    baseSSerialNo = bi.getSSerialno();
                 }
             }
 
             // to save the last company if isn't been committed
-            if (!isSaved) {
-                bulkList.add(convertModelToMap(model));
-            }
+            bulkList.add(convertModelToMap(model));
 
             count += esService.bulkInsert(esIndex, esType, "id", bulkList);
             log.info("Finished handled {} data", count);
@@ -159,7 +151,7 @@ public class DataTransportCallable implements Callable<Long> {
         }};
 
         // key personal info
-        data.put("key_personnel", model.getKey_personnel().stream().filter(Objects::nonNull).map(x -> new HashMap() {
+        data.put("key_personnel", model.getKey_personnel().parallelStream().filter(Objects::nonNull).map(x -> new HashMap() {
             {
                 put("serialno", x.getSerialno());
                 put("name", x.getName());
@@ -169,7 +161,7 @@ public class DataTransportCallable implements Callable<Long> {
         }).collect(Collectors.toList()));
 
         // share holder info
-        data.put("shareholder_information", model.getShareholder_information().stream().filter(Objects::nonNull).map(x -> new HashMap() {
+        data.put("shareholder_information", model.getShareholder_information().parallelStream().filter(Objects::nonNull).map(x -> new HashMap() {
             {
                 put("serialno", x.getSerialno());
                 put("shareholder_name", x.getShareholder_name());

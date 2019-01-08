@@ -8,6 +8,30 @@ import java.util.Map;
 @SuppressWarnings({"unchecked"})
 public class BusinessConstants {
 
+    public static class SysConfig {
+        public SysConfig() {}
+
+        public static final String ENV_FLG_KEY = "spring.profiles.active";
+        public static final String BASE_CONFIG = "application.yml";
+        public static final String CONFIG_TEMPLATE = "application-%s.yml";
+
+        public static final String DAILY_DUMP_KEY = "dailyDump";
+        public static final String ES_BULK_SIZE_KEY = "elasticsearch.bulk.size";
+        public static final String ES_BULK_FLUSH_KEY = "elasticsearch.bulk.flush";
+        public static final String ES_BULK_CONCURRENT_KEY = "elasticsearch.bulk.concurrent";
+        public static final String ES_CONNECT_TIMEOUT_KEY = "elasticsearch.connect-timeout";
+        public static final String ES_SOCKET_TIMEOUT_KEY = "elasticsearch.socket-timeout";
+        public static final String ES_CONNECTION_REQUEST_TIMEOUT_KEY = "elasticsearch.connection-request-timeout";
+        public static final String ES_MAX_RETRY_TINEOUT_MILLIS_KEY = "elasticsearch.max-retry-tineout-millis";
+
+        public static final String ES_ADDRESSES_KEY = "elasticsearch.address";
+        public static final String ES_HTTP_PORT_KEY = "elasticsearch.port.http";
+        public static final String ES_INDEX_KEY = "elasticsearch.index";
+        public static final String ES_TYPE_KEY = "elasticsearch.type";
+
+        public static final String QUERY_PAGE_SIZE_KEY = "paging.pageSize";
+        public static final String THREAD_POOL_SIZE_KEY = "threadpool.keep-alive-num";
+    }
 
     public static class QueryConfig {
         public QueryConfig() { }
@@ -74,14 +98,19 @@ public class BusinessConstants {
         public static final int DEFAULT_ES_SOCKET_TIMEOUT = 40000;
         public static final int DEFAULT_ES_CONNECTION_REQUEST_TIMEOUT = 1000;
         public static final int DEFAULT_ES_MAX_RETRY_TINEOUT_MILLIS = 60000;
+        public static final String DEFAULT_ES_INDEX = "business_data_current_reader";
+        public static final String DEFAULT_ES_TYPE = "business_data";
 
         public static final String QUERY_KEY = "query";
+        public static final String SCORE_KEY = "score";
         public static final String FILTER_KEY = "filter";
         public static final String AGGREGATION_KEY = "aggregation";
         public static final String HIGHLIGHT_KEY = "highlight";
 
         public static final String SIMPLE_QUERY_NAME_KEY = "name";
         public static final String SIMPLE_QUERY_TYPE_KEY = "type";
+        public static final String SIMPLE_QUERY_INDEX_KEY = "index";
+        public static final String SIMPLE_QUERY_SIZE_KEY = "size";
         public static final String SIMPLE_QUERY_FIELD_KEY = "field";
         public static final String SIMPLE_QUERY_VALUE_KEY = "value";
 
@@ -92,6 +121,7 @@ public class BusinessConstants {
         public static final List<String> BOOL_CONDITION_LIST = Arrays.asList(MUST_KEY, SHOULD_KEY, MUST_NOT_KEY);
 
         public static final String TERM_KEY = "term";
+        public static final String TERMS_KEY = "terms";
         public static final String MATCH_KEY = "match";
         public static final String FUZZY_KEY = "fuzzy";
         public static final String PREFIX_KEY = "prefix";
@@ -103,7 +133,7 @@ public class BusinessConstants {
         public static final String MATCH_PHRASE_KEY = "matchPhrase";
         public static final String MATCH_PHRASE_PREFIX_KEY = "matchPhrasePrefix";
 
-        public static final List<String> SIMPLE_CONDITION_LIST = Arrays.asList(TERM_KEY, MATCH_KEY,
+        public static final List<String> SIMPLE_CONDITION_LIST = Arrays.asList(TERM_KEY, TERMS_KEY, MATCH_KEY,
                 FUZZY_KEY, PREFIX_KEY, REGEXP_KEY, WRAPPER_KEY, WILDCARD_KEY, QUERY_STRING_KEY,
                 MATCH_PHRASE_KEY, MATCH_PHRASE_PREFIX_KEY);
 
@@ -121,6 +151,9 @@ public class BusinessConstants {
         public static final String MULTIMATCH_KEY = "multiMatch";
         public static final String FIELDNAMES_KEY = "fieldNames";
 
+        public static final String NESTED_KEY = "nested";
+        public static final String PATH_KEY = "path";
+
         public static final String COUNT_KEY = "count";
         public static final String MAX_KEY = "max";
         public static final String MIN_KEY = "min";
@@ -130,10 +163,7 @@ public class BusinessConstants {
         public static final List<String> SIMPLE_AGGREGATION_LIST = Arrays.asList(COUNT_KEY, MAX_KEY, MIN_KEY,
                 SUM_KEY, AVG_KEY);
 
-        public static final String NESTED_KEY = "nested";
         public static final String SUB_AGG_KEY = "subAgg";
-        public static final String PATH_KEY = "path";
-        public static final String TERMS_KEY = "terms";
         public static final String DATE_RANGE_KEY = "dateRange";
 
         public static final String ANALYZER_KEY = "analyzer";
@@ -157,5 +187,14 @@ public class BusinessConstants {
         public static final String ESSENTIAL_TIME_KEY = "essential_time";
         public static final String KEY_PERSONNEL_TIME_KEY = "key_personnel_time";
         public static final String SHAREHOLDER_INFORMATION_TIME_KEY = "shareholder_information_time";
+    }
+
+    public static class ResultConfig {
+        public ResultConfig() {}
+
+        public static final String DATA_KEY = "data";
+        public static final String TOTAL_KEY = "total";
+        public static final String HIGHLIGH_KEY = "highlight";
+        public static final String AGGREGATION_KEY = "aggregation";
     }
 }

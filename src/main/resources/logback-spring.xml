@@ -7,7 +7,7 @@
     <!--<property name="LOG_HOME" value="${LOG_PATH}/${log.dir:-logs}/${APP_NAME}" />-->
     <springProperty scope="context" name="LOG_HOME" source="logging.path"/>
     <!-- 日志输出格式%d{yyyy-MM-dd HH:mm:ss.SSS}-->
-    <property name="LOG_PATTERN" value="%d{HH:mm:ss.SSS} [%boldYellow(%thread)] %highlight(%-5level) %boldGreen(%logger{80}) - %highlight(%msg) %n" />
+    <property name="LOG_PATTERN" value="%d{HH:mm:ss.SSS} [%boldYellow(%thread)] %highlight(%-5level) %boldGreen(%replace(%caller{1}){'\t|Caller.{2}|\r|\n', ''}) - %highlight(%msg) %n" />
     <contextName>${APP_NAME}</contextName>
 
     <!-- 控制台日志：输出全部日志到控制台 -->
