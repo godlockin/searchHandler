@@ -3,7 +3,7 @@ elasticsearch:
   socket-timeout: 400000
   connection-request-timeout: 1000
   max-retry-tineout-millis: 600000
-  address: 10.0.3.61,10.0.3.63,10.0.3.65
+  address: localhost
   port:
     http: 9200
     ws: 9300
