@@ -1,5 +1,9 @@
 elasticsearch:
-  address: localhost
+  connect-timeout: 5000
+  socket-timeout: 400000
+  connection-request-timeout: 1000
+  max-retry-tineout-millis: 600000
+  address: 10.0.3.61,10.0.3.63,10.0.3.65
   port:
     http: 9200
     ws: 9300
@@ -7,23 +11,33 @@ elasticsearch:
     size: 5000
     flush: 5000
     concurrent: 3
-  index:
-  type:
+  index: business_data_current_reader
+  type: business_data
 
 spring:
   datasource:
-    url: jdbc:mysql://localhost:3006/business?useUnicode=true&characterEncoding=utf-8&zeroDateTimeBehavior=CONVERT_TO_NULL
-    username:
+    url: jdbc:mysql://${db_url}/db?useUnicode=true&characterEncoding=utf-8&zeroDateTimeBehavior=CONVERT_TO_NULL
+    username: readonly
     password:
   rabbitmq:
-    host: localhost
+    host:
     port: 5672
     username: guest
     password: guest
-    queue-name: 
+    queue-name:
+  redis:
+    database: 0
+    host:
+    password:
+    port: 6379
+
+equity:
+  depth: 3
 
 paging:
   pageSize: 5000
 
 threadpool:
-  keep-alive-num: 1024
+  keep-alive-num: 256
+
+dailyDump: false

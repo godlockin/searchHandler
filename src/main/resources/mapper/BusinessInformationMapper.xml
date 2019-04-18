@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="com.tigerobo.searchhandler.mapper.BusinessMapper">
-    <resultMap id="ResultMap" type="com.tigerobo.searchhandler.entity.BusinessInformation">
+<mapper namespace="searchhandler.mapper.BusinessMapper">
+    <resultMap id="ResultMap" type="searchhandler.entity.BusinessInformation">
         <!-- essential -->
         <id column="e_serialno" property="serialno" />
         <result column="e_correlation_no" property="correlationNo" />
@@ -59,6 +59,7 @@
             , e.approval_date as  e_approval_date
             , e.create_time as  e_create_time
             , e.spider_time as  e_spider_time
+            , e.business_scope as e_business_scope
 
             , k.serialno as k_serialno
             , k.name as k_name
@@ -93,11 +94,35 @@
         </if>
     </sql>
 
+    <sql id="incremental_conditions">
+        <if test="essential_information != null ||
+            key_personnel != null ||
+            shareholder_information != null ||
+
+            essential_time != null ||
+            key_personnel_time != null ||
+            shareholder_time != null">
+            where
+            (
+            e.serialno > ${essential_information}
+            or
+            k.serialno > ${key_personnel}
+            or
+            s.serialno > ${shareholder_information}
+            or
+            e.create_time > str_to_date('${essential_time}', '%Y-%m-%d %H:%i:%s')
+            or
+            k.create_time > str_to_date('${key_personnel_time}', '%Y-%m-%d %H:%i:%s')
+            or
+            s.create_time > str_to_date('${shareholder_time}', '%Y-%m-%d %H:%i:%s')
+            )
+        </if>
+    </sql>
+
     <select id="selectAllData" parameterType="java.util.Map" resultMap="ResultMap">
         select
         <include refid="allFieldsQuery"/>
         <include refid="baseConditions"/>
-
         <if test="idList != null">
             where
               e.serialno in
@@ -109,29 +134,30 @@
 
     <select id="findTargetPk" parameterType="java.util.Map" resultType="java.lang.Long">
         select
-          serialno
-        from
-        <if test="provinceCode == null">
-            essential_information e
-        </if>
-        <if test="provinceCode != null">
-            essential_information_${provinceCode} e
-        </if>
-
-        <if test="size != null and index != null">
-            limit ${index}, ${size}
+          distinct e.serialno
+        <include refid="baseConditions"/>
+        <include refid="incremental_conditions"/>
+            order by e.serialno
+        <if test="pageSize != null and index != null">
+            limit ${index}, ${pageSize}
         </if>
     </select>
 
-    <select id="countAllData" parameterType="java.lang.String" resultType="java.lang.Long">
+    <select id="countAllData" parameterType="java.util.Map" resultType="java.lang.Long">
         select
-            count(1)
-        from
-        <if test="provinceCode == null">
-            essential_information e
-        </if>
-        <if test="provinceCode != null">
-            essential_information_${provinceCode} e
-        </if>
+            count(distinct(e.serialno))
+        <include refid="baseConditions"/>
+        <include refid="incremental_conditions"/>
+    </select>
+
+    <select id="queryForCNo" parameterType="java.util.Map"  resultMap="ResultMap">
+        select
+            <include refid="allFieldsQuery"/>
+            <include refid="baseConditions"/>
+        where
+          e.correlation_no in
+        <foreach collection="data" index="index" item="item" open="(" separator="," close=")">
+            #{item}
+        </foreach>
     </select>
 </mapper>

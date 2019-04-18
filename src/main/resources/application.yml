@@ -6,6 +6,15 @@ spring:
     name: search-handler
   profiles:
     active: dev
+  redis:
+    maxWaitMillis: 1
+    testWhileIdle: true
+    maxIdle: 3
+    testOnBorrow: true
+    minEvictableIdleTimeMillis: 10000
+    timeBetweenEvictionRunsMillis: -1
+    maxTotal: 10
+    numTestsPerEvictionRun: 3
   datasource:
     type: com.alibaba.druid.pool.DruidDataSource
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -46,8 +55,23 @@ mybatis:
   mapper-locations: mapper/*.xml
   type-aliases-package: com.tigerobo.searchhandler.entity
 
+http:
+  defaultMaxPerRoute: 20
+  maxTotal: 100
+  staleConnectionCheckEnabled: true
+  socketTimeout: 10000
+  connectTimeout: 1000
+  connectionRequestTimeout: 500
+
 elasticsearch:
   connect-timeout: 5000
-  socket-timeout: 40000
+  socket-timeout: 400000
   connection-request-timeout: 1000
-  max-retry-tineout-millis: 60000
+  max-retry-tineout-millis: 600000
+  port:
+    http: 9200
+    ws: 9300
+  bulk:
+    size: 5000
+    flush: 5000
+    concurrent: 3
