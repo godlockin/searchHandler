@@ -152,12 +152,13 @@
 
     <select id="queryForCNo" parameterType="java.util.Map"  resultMap="ResultMap">
         select
-            <include refid="allFieldsQuery"/>
-            <include refid="baseConditions"/>
+        <include refid="allFieldsQuery"/>
+        <include refid="baseConditions"/>
         where
-          e.correlation_no in
+        e.correlation_no in
         <foreach collection="data" index="index" item="item" open="(" separator="," close=")">
             #{item}
         </foreach>
     </select>
+
 </mapper>
